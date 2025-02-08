@@ -1,0 +1,130 @@
+#!/bin/bash
+
+function show_usage() {
+	echo "";
+	echo "${THIS_FILE} [command] [name]";
+	echo "";
+	echo "  Command  Description";
+	echo "";
+	echo "  setup    Will pull the latest Postgres image from Docker.";
+	echo "           If you don't have the image already, you have to";
+	echo "           run this command first.";
+	echo "";
+	echo "  psql     Run psql command.";
+	echo "           If you don't want to use the default instance,";
+	echo "           use this command followed by a name of the instance.";
+	echo "           Example: ${THIS_FILE} psql [name of instance]";
+	echo "";
+	echo "  start    Start a new instance of Postgres.";
+	echo "           If you don't want to use the default instance,";
+	echo "           use this command followed by a name of the instance.";
+	echo "           Example: ${THIS_FILE} start [name of instance]";
+	echo "";
+	echo "  status   Show status of a Postgres instance.";
+	echo "           If you don't want to use the default instance,";
+	echo "           use this command followed by a name of the instance.";
+	echo "           Example: ${THIS_FILE} status [name of instance]";
+	echo "";
+	echo "  stop     Stop a Postgres instance.";
+	echo "           If you don't want to use the default instance,";
+	echo "           use this command followed by a name of the instance.";
+	echo "           Example: ${THIS_FILE} status [name of instance]";
+	echo "";
+	echo "  volume   List existing volumes.";
+	echo "";
+	echo "  remove   Remove a Postgres instance.";
+	echo "           If you don't want to use the default instance,";
+	echo "           use this command followed by a name of the instance.";
+	echo "           NOTE: To remove the instance you will be asked to";
+	echo "                 enter the name of instance to perform the removal.";
+	echo "           Example: ${THIS_FILE} remove [name of instance]";
+	echo "";
+	exit 1;
+}
+
+THIS_FILE=`basename $0`;
+
+if [ "$#" -eq "0" ]; then
+	show_usage;
+fi
+
+PG_NAME="pg_dev";
+PG_USER="pg";
+PG_PASS="pg";
+PG_DATA="${PG_NAME}_data";
+
+DOCKER=`which docker`;
+if [ "$?" -ne "0" ]; then
+	echo "${THIS_FILE}: Could not find Docker.";
+	exit 1;
+fi
+
+case "$1" in
+	"setup")
+		$DOCKER pull postgres;
+	;;
+	"psql")
+		echo "Starting psql ..";
+		if [ "$#" -eq "2" ]; then
+			PG_NAME="$2";
+		fi
+
+		$DOCKER						\
+			exec						\
+			-it "$PG_NAME"	\
+			psql						\
+			-U "$PG_USER";
+	;;
+	"start")
+		echo "${THIS_FILE}: Creating and starting '$PG_NAME'.";
+		if [ "$#" -eq "2" ]; then
+			PG_NAME="$2";
+		fi
+
+		$DOCKER																	\
+			run																		\
+			-d																		\
+			--name "$PG_NAME"											\
+			-e POSTGRES_USER=$PG_USER							\
+			-e POSTGRES_PASSWORD=$PG_PASS					\
+			-v $PG_DATA:/var/lib/postgresql/data	\
+			-p 5432:5432													\
+			postgres;
+	;;
+	"status")
+		$DOCKER ps;
+	;;
+	"stop")
+		if [ "$#" -eq "2" ]; then
+			PG_NAME="$2";
+		fi
+
+		echo "${THIS_FILE}: Terminating and deleting '$PG_NAME'.";
+		$DOCKER stop "$PG_NAME";
+		$DOCKER rm   "$PG_NAME";
+	;;
+	"volume")
+		$DOCKER volume ls
+	;;
+	"remove")
+		if [ "$#" -eq "2" ]; then
+			PG_NAME="$2";
+			PG_DATA="${2}_data";
+		fi
+
+		echo "Type '$PG_NAME' to confirm. To abort, press <enter> or Ctrl-C.";
+		read CONFIRM_REMOVAL;
+		if [ "$CONFIRM_REMOVAL" != "$PG_NAME" ]; then
+			echo "${THIS_FILE}: Image will not be removed!";
+			exit 1;
+		fi
+		$DOCKER stop      "$PG_NAME";
+		$DOCKER rm        "$PG_NAME";
+		$DOCKER volume rm "$PG_DATA";
+	;;
+	*)
+		show_usage;
+	;;
+esac;
+
+exit 0;
